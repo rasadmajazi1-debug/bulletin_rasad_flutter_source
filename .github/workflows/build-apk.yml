@@ -8,29 +8,35 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Find and extract project ZIP
+      - name: Inspect repository
         run: |
-          set -e
-          ZIP=$(find . -maxdepth 2 -type f -iname '*.zip' | head -n 1)
+          echo "Repository files:"
+          find . -maxdepth 3 -type f | head -100
+
+      - name: Extract uploaded ZIP
+        run: |
+          set -eu
+          ZIP="$(find . -maxdepth 3 -type f -iname '*.zip' | head -1)"
           if [ -z "$ZIP" ]; then
-            echo "Project ZIP not found"
+            echo "::error::No ZIP file found in repository."
             exit 1
           fi
-          mkdir project
+          mkdir -p project
           unzip -q "$ZIP" -d project
-          echo "ZIP extracted"
+          find project -name pubspec.yaml -print
 
       - name: Locate Flutter project
         run: |
-          set -e
-          PUBSPEC=$(find project -name pubspec.yaml -type f | head -n 1)
+          set -eu
+          PUBSPEC="$(find project -name pubspec.yaml -type f | head -1)"
           if [ -z "$PUBSPEC" ]; then
-            echo "pubspec.yaml not found in ZIP"
+            echo "::error::The ZIP does not contain pubspec.yaml."
             exit 1
           fi
           echo "PROJECT_DIR=$(dirname "$PUBSPEC")" >> "$GITHUB_ENV"
@@ -40,16 +46,15 @@ jobs:
         with:
           channel: stable
 
-      - name: Install Android dependencies
-        run: flutter doctor
-
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
+          flutter --version
           flutter pub get
           flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: bulletin-rasad-release-apk
